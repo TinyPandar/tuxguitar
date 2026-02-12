@@ -55,9 +55,10 @@ public class MidiPlayer{
 	private int loopEHeader;
 	private TGBeat selectionStartBeat;
 	private TGBeat selectionEndBeat;
+	private Long selectionStartTick;
+	private Long selectionEndTick;
 	private boolean isNewSelection;
 	private long startTick = TGDuration.QUARTER_TIME;
-	private Long selectionStartTick = null;
 	private long loopSPosition;
 	private boolean anySolo;
 	protected long tickLength;
@@ -175,7 +176,6 @@ public class MidiPlayer{
 			this.changeTickPosition();
 			if (this.selectionStartBeat==null || this.selectionEndBeat==null) {
 				// nothing selected
-				this.selectionStartTick = null;
 				this.startTick = this.tickPosition;
 			} else {
 				if (this.selectionStartTick == null) {
@@ -521,7 +521,7 @@ public class MidiPlayer{
 			this.lock();
 			if( this.isRunning()){
 				if (this.isNewSelection && this.selectionStartBeat!=null && this.selectionEndBeat!=null) {
-					this.tickPosition = this.selectionStartBeat.getMeasure().getStart();
+					this.tickPosition = this.selectionStartBeat.getStart();
 					this.isNewSelection = false;
 				}
 				else if( this.tickPosition < this.getLoopSPosition() ){
@@ -546,6 +546,7 @@ public class MidiPlayer{
 			if (this.selectionEndBeat!=null) {
 				midiSequenceParser.setSHeader( selectionStartBeat.getMeasure().getNumber() );
 				midiSequenceParser.setEHeader( selectionEndBeat.getMeasure().getNumber() );
+				midiSequenceParser.setSelectionTicks(this.selectionStartTick, this.selectionEndTick);
 			} else {
 				midiSequenceParser.setSHeader( getLoopSHeader() );
 				midiSequenceParser.setEHeader( getLoopEHeader() );
@@ -1372,5 +1373,21 @@ public class MidiPlayer{
 		this.isNewSelection = (this.selectionStartBeat!=start || this.selectionEndBeat!=end);
 		this.selectionStartBeat = start;
 		this.selectionEndBeat = end;
+		this.selectionStartTick = (start != null ? start.getStart() : null);
+		this.selectionEndTick = (end != null ? getBeatEndTick(end) : null);
+	}
+
+	private long getBeatEndTick(TGBeat beat) {
+		long maxDuration = 0;
+		for (int i = 0; i < beat.countVoices(); i++) {
+			long voiceDuration = beat.getVoice(i).getDuration().getTime();
+			if (voiceDuration > maxDuration) {
+				maxDuration = voiceDuration;
+			}
+		}
+		if (maxDuration <= 0) {
+			maxDuration = TGDuration.QUARTER_TIME;
+		}
+		return (beat.getStart() + maxDuration);
 	}
 }

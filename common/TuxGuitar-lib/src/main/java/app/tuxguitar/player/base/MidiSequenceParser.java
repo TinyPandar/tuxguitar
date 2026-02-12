@@ -53,6 +53,8 @@ public class MidiSequenceParser {
 	private int transpose;
 	private int sHeader;
 	private int eHeader;
+	private Long selectionStartTick;
+	private Long selectionEndTick;
 	private TreeMap<Long, TGTempo> tempoMap;	// ordered map of ticks where tempo changes
 	private TreeMap<Long, Long> timestampMap;	// ordered map of timestamps (in ms) where tempo changes
 
@@ -64,6 +66,8 @@ public class MidiSequenceParser {
 		this.transpose = 0;
 		this.sHeader = -1;
 		this.eHeader = -1;
+		this.selectionStartTick = null;
+		this.selectionEndTick = null;
 		this.firstTickMove = (int) ((flags & ADD_FIRST_TICK_MOVE) != 0 ? -TGDuration.QUARTER_TIME : 0);
 		this.tempoMap = new TreeMap<Long, TGTempo>();
 		this.timestampMap = new TreeMap<Long, Long>();
@@ -95,6 +99,11 @@ public class MidiSequenceParser {
 
 	public void setEHeader(int header) {
 		this.eHeader = header;
+	}
+
+	public void setSelectionTicks(Long selectionStartTick, Long selectionEndTick) {
+		this.selectionStartTick = selectionStartTick;
+		this.selectionEndTick = selectionEndTick;
 	}
 
 	public void setMetronomeChannelId(int metronomeChannelId) {
@@ -315,10 +324,39 @@ public class MidiSequenceParser {
 	}
 
 	private void addNote(MidiSequenceHelper sh,int track, int key, long start, long duration, int velocity, int channel, int midiVoice, boolean bendMode) {
-		sh.getSequence().addNoteOn(getTick(start),track,channel,fix(key),fix(velocity), midiVoice, bendMode);
-		if( duration > 0 ){
-			sh.getSequence().addNoteOff(getTick(start + duration),track,channel,fix(key),fix(velocity), midiVoice, bendMode);
+		if (!this.shouldPlayNote(start, duration)) {
+			return;
 		}
+
+		long clippedStart = start;
+		long clippedDuration = duration;
+		if (this.selectionStartTick != null && clippedStart < this.selectionStartTick.longValue()) {
+			long delta = (this.selectionStartTick.longValue() - clippedStart);
+			clippedStart = this.selectionStartTick.longValue();
+			clippedDuration = Math.max(0, clippedDuration - delta);
+		}
+		if (this.selectionEndTick != null) {
+			long noteEnd = (clippedStart + clippedDuration);
+			if (noteEnd > this.selectionEndTick.longValue()) {
+				clippedDuration = Math.max(0, this.selectionEndTick.longValue() - clippedStart);
+			}
+		}
+
+		if (clippedDuration <= 0) {
+			return;
+		}
+		sh.getSequence().addNoteOn(getTick(clippedStart),track,channel,fix(key),fix(velocity), midiVoice, bendMode);
+		if( clippedDuration > 0 ){
+			sh.getSequence().addNoteOff(getTick(clippedStart + clippedDuration),track,channel,fix(key),fix(velocity), midiVoice, bendMode);
+		}
+	}
+
+	private boolean shouldPlayNote(long start, long duration) {
+		if (this.selectionStartTick == null || this.selectionEndTick == null) {
+			return true;
+		}
+		long end = (start + duration);
+		return (start < this.selectionEndTick.longValue() && end > this.selectionStartTick.longValue());
 	}
 
 	private void makeTrackChannel(MidiSequenceHelper sh, TGChannel channel, TGTrack track) {
